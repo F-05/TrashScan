@@ -1,3 +1,9 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+
 waste-2/
 result2.jpg
 download-dataset.py

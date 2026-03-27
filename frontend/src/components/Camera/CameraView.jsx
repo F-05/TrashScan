@@ -1,93 +1,134 @@
 // src/components/Camera/CameraViewWS.jsx
 import React, { useEffect, useRef, useState } from "react";
 
-const WS_URL = "ws://localhost:8000/ws/detect"; // change for your backend
+const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000/ws/detect";
 
 export default function CameraViewWS() {
   const videoRef = useRef(null);
-  const captureRef = useRef(null);   // offscreen capture canvas
-  const overlayRef = useRef(null);   // overlay canvas for boxes
+  const captureRef = useRef(null);
+  const overlayRef = useRef(null);
   const wsRef = useRef(null);
-  const sendingRef = useRef(false);  // prevent overlapping sends
+  const sendingRef = useRef(false);
+  const timeoutRef = useRef(null);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    let stream;
+    let stream = null;
+    let cancelled = false;
+
     const init = async () => {
-      // Camera
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
-      // Match canvases to video
-      const setupCanvasSizes = () => {
-        const w = videoRef.current.videoWidth || 640;
-        const h = videoRef.current.videoHeight || 480;
-        [captureRef.current, overlayRef.current].forEach((c) => {
-          if (!c) return;
-          c.width = w;
-          c.height = h;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
         });
-      };
-      videoRef.current.onloadedmetadata = setupCanvasSizes;
-      setupCanvasSizes();
 
-      // WebSocket
-      wsRef.current = new WebSocket(WS_URL);
-      wsRef.current.onopen = () => setConnected(true);
-      wsRef.current.onclose = () => setConnected(false);
-      wsRef.current.onerror = () => setConnected(false);
+        if (cancelled || !videoRef.current) return;
 
-      wsRef.current.onmessage = (evt) => {
+        const video = videoRef.current;
+        video.srcObject = stream;
+        video.muted = true;
+        video.playsInline = true;
+
         try {
-          const data = JSON.parse(evt.data);
-          if (data.detections && overlayRef.current) drawDetections(data);
-        } catch (e) {
-          console.error("WS parse error", e);
+          await video.play();
+        } catch (err) {
+          if (!cancelled && err.name !== "AbortError") {
+            console.error("Video play failed:", err);
+          }
         }
-      };
 
-      // Start send loop (throttled)
-      startSendLoop(10); // FPS cap
+        if (cancelled || !videoRef.current) return;
+
+        const setupCanvasSizes = () => {
+          if (!videoRef.current) return;
+          const w = videoRef.current.videoWidth || 640;
+          const h = videoRef.current.videoHeight || 480;
+
+          [captureRef.current, overlayRef.current].forEach((c) => {
+            if (!c) return;
+            c.width = w;
+            c.height = h;
+          });
+        };
+
+        video.onloadedmetadata = setupCanvasSizes;
+        setupCanvasSizes();
+
+        wsRef.current = new WebSocket(WS_URL);
+
+        wsRef.current.onopen = () => setConnected(true);
+        wsRef.current.onclose = () => setConnected(false);
+        wsRef.current.onerror = () => setConnected(false);
+
+        wsRef.current.onmessage = (evt) => {
+          try {
+            const data = JSON.parse(evt.data);
+            if (data.detections && overlayRef.current) {
+              drawDetections(data);
+            }
+          } catch (e) {
+            console.error("WS parse error:", e);
+          }
+        };
+
+        startSendLoop(10);
+      } catch (err) {
+        console.error("Camera init failed:", err);
+      }
     };
 
     init();
 
     return () => {
-      try { wsRef.current?.close(); } catch { }
-      if (stream) stream.getTracks().forEach((t) => t.stop());
+      cancelled = true;
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      try {
+        wsRef.current?.close();
+      } catch {}
+
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
     };
   }, []);
 
   const drawDetections = (data) => {
-    const ctx = overlayRef.current.getContext("2d");
+    const canvas = overlayRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
     const { detections, width, height } = data;
 
-    // Clear
-    ctx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Scale from model's orig size to canvas size
-    const sx = overlayRef.current.width / width;
-    const sy = overlayRef.current.height / height;
+    const sx = canvas.width / width;
+    const sy = canvas.height / height;
 
     ctx.lineWidth = 2;
     ctx.font = "14px Poppins, sans-serif";
+
     detections.forEach((d) => {
       const x = d.x1 * sx;
       const y = d.y1 * sy;
       const w = (d.x2 - d.x1) * sx;
       const h = (d.y2 - d.y1) * sy;
 
-      // Box
-      ctx.strokeStyle = "hsl(10, 89%, 55%)"; // accent coral
+      ctx.strokeStyle = "hsl(10, 89%, 55%)";
       ctx.strokeRect(x, y, w, h);
 
-      // Label
       const label = `${d.label} ${Math.round(d.conf * 100)}%`;
       const pad = 4;
       ctx.fillStyle = "rgba(0,0,0,0.6)";
@@ -101,44 +142,63 @@ export default function CameraViewWS() {
 
   const startSendLoop = (fps = 8) => {
     const interval = Math.max(1, Math.floor(1000 / fps));
+
     const loop = async () => {
       if (wsRef.current?.readyState === WebSocket.OPEN && !sendingRef.current) {
         try {
           sendingRef.current = true;
           const blob = await captureFrameBlob();
-          if (blob) {
+
+          if (blob && wsRef.current?.readyState === WebSocket.OPEN) {
             const buf = await blob.arrayBuffer();
             wsRef.current.send(buf);
           }
         } catch (e) {
-          // swallow send errors; will retry next tick
+          console.error("Frame send error:", e);
         } finally {
           sendingRef.current = false;
         }
       }
-      setTimeout(loop, interval);
+
+      timeoutRef.current = setTimeout(loop, interval);
     };
+
     loop();
   };
 
   const captureFrameBlob = () => {
     const video = videoRef.current;
     const canvas = captureRef.current;
-    if (!video || !canvas) return null;
+
+    if (!video || !canvas || video.readyState < 2) return null;
+
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
     return new Promise((resolve) => {
-      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.6); // compress for bandwidth
+      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.6);
     });
   };
 
   return (
     <div
       id="camera"
-      style={{ position: "relative", width: "min(100%, 1300px)", margin: "0 auto", padding: "100px", height: "780px" }}
+      style={{
+        position: "relative",
+        width: "min(100%, 1300px)",
+        margin: "0 auto",
+        padding: "100px",
+        height: "780px",
+      }}
     >
       <div style={{ position: "relative" }}>
-        <video ref={videoRef} playsInline muted style={{ width: "100%", borderRadius: 12 }} />
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          style={{ width: "100%", borderRadius: 12 }}
+        />
         <canvas
           ref={overlayRef}
           style={{
@@ -150,8 +210,12 @@ export default function CameraViewWS() {
           }}
         />
       </div>
-      {/* Offscreen capture canvas */}
+
       <canvas ref={captureRef} style={{ display: "none" }} />
+
+      <p style={{ textAlign: "center", marginTop: 12 }}>
+        WebSocket: {connected ? "Connected" : "Disconnected"}
+      </p>
     </div>
   );
 }
