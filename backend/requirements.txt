@@ -1,19 +1,8 @@
-# Django stack
-Django==5.2.5
-asgiref==3.9.1
-sqlparse==0.5.3
-python-dotenv
-
-# FastAPI + Uvicorn (web backend)
 fastapi
 uvicorn[standard]
 websockets
-
-# ML / Vision
-numpy
+numpy==1.26.4
 ultralytics
 pillow
 opencv-python
-
-# Packaging
-pip
+python-dotenv
