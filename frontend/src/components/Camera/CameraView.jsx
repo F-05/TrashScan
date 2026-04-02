@@ -207,7 +207,7 @@ export default function CameraViewWS() {
         width: "min(100%, 1300px)",
         margin: "0 auto",
         padding: "100px",
-        height: "780px",
+        height: "840px",
       }}
     >
       <div style={{ position: "relative" }}>
@@ -238,7 +238,7 @@ export default function CameraViewWS() {
       <p style={{ textAlign: "center", marginTop: 8 }}>
         Round-trip latency: {latencyMs !== null ? `${latencyMs} ms` : "Measuring..."}
       </p>
-      <p style={{ textAlign: "center", marginTop: 8 }}>
+      <p style={{ textAlign: "center", marginTop: 8}}>
         Camera send rate: {fpsValue} FPS
       </p>
     </div>
