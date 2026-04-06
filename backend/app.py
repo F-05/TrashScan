@@ -7,6 +7,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from ultralytics import YOLO
 import asyncio
+import threading
 
 app = FastAPI()
 
@@ -18,7 +19,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-model = YOLO("last.pt")
+# Lazy load model on first use to save memory
+model = None
+model_lock = threading.Lock()
+
+def get_model():
+    global model
+    if model is None:
+        with model_lock:
+            if model is None:  # Check again after acquiring lock
+                print("Loading YOLO model...")
+                model = YOLO("last.pt")
+                print("Model loaded successfully")
+    return model
 
 @app.get("/")
 def root():
@@ -26,7 +39,8 @@ def root():
 
 async def run_inference_pil(pil_img: Image.Image):
     loop = asyncio.get_running_loop()
-    results = await loop.run_in_executor(None, model, pil_img)
+    model_instance = get_model()
+    results = await loop.run_in_executor(None, model_instance, pil_img)
     return results
 
 def pack_results(results):
