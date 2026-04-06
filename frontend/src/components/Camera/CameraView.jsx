@@ -11,6 +11,11 @@ export default function CameraViewWS() {
   const sendingRef = useRef(false);
   const timeoutRef = useRef(null);
   const [connected, setConnected] = useState(false);
+  const [latencyMs, setLatencyMs] = useState(null);
+  const [fpsValue, setFpsValue] = useState(0);
+  const lastSentAtRef = useRef(null);
+  const frameCounterRef = useRef(0);
+  const lastFpsAtRef = useRef(performance.now());
 
   useEffect(() => {
     let stream = null;
@@ -68,6 +73,10 @@ export default function CameraViewWS() {
         wsRef.current.onmessage = (evt) => {
           try {
             const data = JSON.parse(evt.data);
+            if (lastSentAtRef.current !== null) {
+              setLatencyMs(Math.round(performance.now() - lastSentAtRef.current));
+              lastSentAtRef.current = null;
+            }
             if (data.detections && overlayRef.current) {
               drawDetections(data);
             }
@@ -150,8 +159,18 @@ export default function CameraViewWS() {
           const blob = await captureFrameBlob();
 
           if (blob && wsRef.current?.readyState === WebSocket.OPEN) {
+            lastSentAtRef.current = performance.now();
             const buf = await blob.arrayBuffer();
             wsRef.current.send(buf);
+            frameCounterRef.current += 1;
+
+            const now = performance.now();
+            const elapsed = now - lastFpsAtRef.current;
+            if (elapsed >= 1000) {
+              setFpsValue(Math.round((frameCounterRef.current * 1000) / elapsed));
+              frameCounterRef.current = 0;
+              lastFpsAtRef.current = now;
+            }
           }
         } catch (e) {
           console.error("Frame send error:", e);
@@ -188,7 +207,7 @@ export default function CameraViewWS() {
         width: "min(100%, 1300px)",
         margin: "0 auto",
         padding: "100px",
-        height: "780px",
+        height: "840px",
       }}
     >
       <div style={{ position: "relative" }}>
@@ -215,6 +234,12 @@ export default function CameraViewWS() {
 
       <p style={{ textAlign: "center", marginTop: 12 }}>
         WebSocket: {connected ? "Connected" : "Disconnected"}
+      </p>
+      <p style={{ textAlign: "center", marginTop: 8 }}>
+        Round-trip latency: {latencyMs !== null ? `${latencyMs} ms` : "Measuring..."}
+      </p>
+      <p style={{ textAlign: "center", marginTop: 8}}>
+        Camera send rate: {fpsValue} FPS
       </p>
     </div>
   );
