@@ -3,7 +3,7 @@ import logo from "../../assets/LOGO.png";
 import earth from "../../assets/earth.png";
 import hands from "../../assets/hand.png";
 import "./HomePage.css";
-import "../../app.css";
+import "../../App.css";
 
 export default function HomePage() {
   return (
