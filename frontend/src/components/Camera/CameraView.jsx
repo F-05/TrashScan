@@ -1,5 +1,6 @@
 // src/components/Camera/CameraViewWS.jsx
 import React, { useEffect, useRef, useState } from "react";
+import "./CameraView.css";
 
 const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000/ws/detect";
 
