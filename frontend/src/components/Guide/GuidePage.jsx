@@ -1,6 +1,6 @@
 import React from "react";
 import "./GuidePage.css";
-import "../../app.css";
+import "../../App.css";
 
 export default function GuidePage() {
     return ( 
