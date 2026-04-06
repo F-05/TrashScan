@@ -1,5 +1,5 @@
 // src/components/Camera/CameraViewWS.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import "./CameraView.css";
 
 const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000/ws/detect";
@@ -93,6 +93,7 @@ export default function CameraViewWS() {
     };
 
     init();
+    const cleanupVideo = videoRef.current;
 
     return () => {
       cancelled = true;
@@ -103,17 +104,19 @@ export default function CameraViewWS() {
 
       try {
         wsRef.current?.close();
-      } catch {}
+      } catch (e) {
+        console.error("WebSocket close error:", e);
+      }
 
       if (stream) {
         stream.getTracks().forEach((t) => t.stop());
       }
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
+      if (cleanupVideo) {
+        cleanupVideo.srcObject = null;
       }
     };
-  }, []);
+  }, [startSendLoop]);
 
   const drawDetections = (data) => {
     const canvas = overlayRef.current;
@@ -150,7 +153,7 @@ export default function CameraViewWS() {
     });
   };
 
-  const startSendLoop = (fps = 8) => {
+  const startSendLoop = useCallback((fps = 8) => {
     const interval = Math.max(1, Math.floor(1000 / fps));
 
     const loop = async () => {
@@ -184,9 +187,9 @@ export default function CameraViewWS() {
     };
 
     loop();
-  };
+  }, [captureFrameBlob]);
 
-  const captureFrameBlob = () => {
+  const captureFrameBlob = useCallback(() => {
     const video = videoRef.current;
     const canvas = captureRef.current;
 
@@ -198,7 +201,7 @@ export default function CameraViewWS() {
     return new Promise((resolve) => {
       canvas.toBlob((b) => resolve(b), "image/jpeg", 0.6);
     });
-  };
+  }, []);
 
   return (
     <div
