@@ -7,13 +7,11 @@ import Footer from "./components/Footer/Footer.jsx";
 
 export default function App() {
   return (
-    <StrictMode>
-      <main>
-        <HomePage />
-        <GuidePage />
-        <CameraView />
-        <Footer />
-      </main>
-    </StrictMode>
+    <main>
+      <HomePage />
+      <GuidePage />
+      <CameraView />
+      <Footer />
+    </main>
   );
 }

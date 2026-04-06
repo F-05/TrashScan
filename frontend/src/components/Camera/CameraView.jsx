@@ -93,7 +93,6 @@ export default function CameraViewWS() {
     };
 
     init();
-    const cleanupVideo = videoRef.current;
 
     return () => {
       cancelled = true;
@@ -112,11 +111,11 @@ export default function CameraViewWS() {
         stream.getTracks().forEach((t) => t.stop());
       }
 
-      if (cleanupVideo) {
-        cleanupVideo.srcObject = null;
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
       }
     };
-  }, [startSendLoop]);
+  }, []);
 
   const drawDetections = (data) => {
     const canvas = overlayRef.current;
@@ -153,6 +152,20 @@ export default function CameraViewWS() {
     });
   };
 
+  const captureFrameBlob = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = captureRef.current;
+
+    if (!video || !canvas || video.readyState < 2) return null;
+
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    return new Promise((resolve) => {
+      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.6);
+    });
+  }, []);
+
   const startSendLoop = useCallback((fps = 8) => {
     const interval = Math.max(1, Math.floor(1000 / fps));
 
@@ -188,20 +201,6 @@ export default function CameraViewWS() {
 
     loop();
   }, [captureFrameBlob]);
-
-  const captureFrameBlob = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = captureRef.current;
-
-    if (!video || !canvas || video.readyState < 2) return null;
-
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    return new Promise((resolve) => {
-      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.6);
-    });
-  }, []);
 
   return (
     <div
